@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#102c46">
+  <title>GaGeSystem — Verifikasi Kamera</title>
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/human@3.3.6/dist/human.js"></script>
+  <style>
+    :root{--navy:#102c46;--blue:#1d5c83;--teal:#159b90;--bg:#f3f6f9;--ink:#172b3a;--muted:#687b8a;--line:#e1e8ee;--green:#16794c;--red:#b42318}
+    *{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#102c46,#1d5c83 60%,#168e88);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);min-height:100svh;padding:20px;display:grid;place-items:center}.card{width:min(100%,520px);background:#fff;border-radius:22px;padding:22px;box-shadow:0 20px 60px #06182766}.brand{display:flex;align-items:center;gap:10px;color:var(--navy);font-weight:850}.mark{width:42px;height:42px;border-radius:13px;background:var(--navy);color:white;display:grid;place-items:center}.eyebrow{font-size:10px;font-weight:800;letter-spacing:1px;color:var(--teal);margin-top:20px;text-transform:uppercase}.title{font-size:23px;font-weight:900;color:var(--navy);margin:5px 0}.desc{font-size:13px;color:var(--muted);line-height:1.55}.camera{background:#071827;border-radius:16px;overflow:hidden;aspect-ratio:4/3;margin:16px 0;display:grid;place-items:center;position:relative}.camera video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}.camera .placeholder{position:absolute;color:#e1edf4;text-align:center;padding:16px;font-size:13px;line-height:1.5}.status{min-height:54px;border-radius:12px;background:#f2f6f8;color:#445b6c;padding:12px;font-size:12px;line-height:1.5}.btn{width:100%;height:48px;border:0;border-radius:12px;background:var(--navy);color:white;font-size:14px;font-weight:800;margin-top:14px;cursor:pointer}.btn:disabled{opacity:.55}.small{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px}.warning{background:#fff8e5;border:1px solid #f1d99a;color:#765911;padding:10px;border-radius:11px;font-size:11px;line-height:1.5;margin-top:12px}.ok{color:var(--green)}.bad{color:var(--red)}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><div class="mark">GG</div><div>GaGeSystem<br><span style="font-size:10px;font-weight:500;color:var(--muted)">AKPER ALKAUTSAR TEMANGGUNG</span></div></div>
+    <div class="eyebrow">Secure capture window</div>
+    <div class="title" id="title">Verifikasi wajah</div>
+    <div class="desc" id="desc">Kamera dan lokasi akan digunakan hanya untuk memproses presensi ini. Foto/video tidak dikirim ke spreadsheet.</div>
+    <div class="camera"><video id="video" autoplay muted playsinline></video><div class="placeholder" id="placeholder">Tekan tombol di bawah untuk mengaktifkan kamera dan lokasi.</div></div>
+    <div class="status" id="status">Siap. Pastikan Anda membuka halaman ini dari GaGeSystem.</div>
+    <button class="btn" id="startBtn" onclick="startCapture()">Mulai verifikasi</button>
+    <div class="warning">Pastikan hanya satu wajah berada di depan kamera. Jangan gunakan foto, rekaman, atau layar perangkat. Verifikasi ini merupakan pemeriksaan awal dan masih dapat dipengaruhi manipulasi perangkat/browser.</div>
+    <div class="small">Setelah proses selesai, hasil verifikasi dikirim kembali ke tab GaGeSystem. Jangan tutup tab ini sebelum muncul pesan berhasil.</div>
+  </main>
+<script>
+  const params=new URLSearchParams(location.search);
+  const mode=params.get('mode')||'';
+  const type=params.get('type')||'';
+  const nonce=params.get('nonce')||'';
+  const liveMin=Number(params.get('liveMin')||0.6);
+  const realMin=Number(params.get('realMin')||0.6);
+  const HUMAN_CONFIG={backend:'webgl',modelBasePath:'https://cdn.jsdelivr.net/npm/@vladmandic/human@3.3.6/models/',filter:{enabled:true,equalization:true},cacheSensitivity:0.01,face:{enabled:true,detector:{rotation:true,maxDetected:2},mesh:{enabled:true},iris:{enabled:true},description:{enabled:true},antispoof:{enabled:true},liveness:{enabled:true},emotion:{enabled:false}},body:{enabled:false},hand:{enabled:false},object:{enabled:false},gesture:{enabled:false},segmentation:{enabled:false}};
+  let human=null,stream=null,busy=false;
+  const video=document.getElementById('video');
+  const statusEl=document.getElementById('status');
+  const startBtn=document.getElementById('startBtn');
+  const titleEl=document.getElementById('title');
+  const descEl=document.getElementById('desc');
+  if(mode==='enroll'){titleEl.textContent='Pendaftaran wajah';descEl.textContent='Arahkan wajah ke kamera. Sistem akan mengambil tiga sampel untuk membentuk template biometrik.';}
+  else if(mode==='attendance'){titleEl.textContent='Presensi '+(type==='DATANG'?'kedatangan':'kepulangan');descEl.textContent='Pastikan Anda berada di area kampus dan menghadap kamera. Sistem akan mengambil wajah dan koordinat GPS perangkat.';}
+  else if(mode==='location'){titleEl.textContent='Ambil koordinat kampus';descEl.textContent='Pastikan perangkat berada tepat di titik lokasi presensi yang ditetapkan kampus. Koordinat akan dikirim ke panel pengaturan.';document.querySelector('.camera').style.display='none';document.querySelector('.warning').textContent='Koordinat yang diambil hanya menjadi nilai isian. SuperAdmin tetap harus memeriksa dan menyimpannya secara sadar.';}
+  else{statusEl.textContent='Parameter halaman tidak dikenal. Kembali ke aplikasi dan mulai ulang.';startBtn.disabled=true;}
+
+  function send(kind,extra={}){try{if(window.opener)window.opener.postMessage(Object.assign({app:'GaGeSystemCapture',kind:kind,nonce:nonce},extra),'*');}catch(e){}}
+  function setStatus(t){statusEl.textContent=t;}
+  function getGps(){return new Promise((resolve,reject)=>{if(!navigator.geolocation){reject(new Error('Browser tidak menyediakan layanan lokasi.'));return;}navigator.geolocation.getCurrentPosition(p=>resolve({latitude:p.coords.latitude,longitude:p.coords.longitude,accuracy:p.coords.accuracy}),e=>reject(new Error(e.code===1?'Izin lokasi ditolak. Aktifkan izin lokasi.':e.code===2?'GPS tidak dapat menemukan lokasi. Aktifkan lokasi presisi dan coba di area terbuka.':'Pengambilan GPS terlalu lama. Coba lagi.')),{enableHighAccuracy:true,timeout:20000,maximumAge:0});});}
+  async function startCamera(){if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('Browser ini tidak mendukung akses kamera. Gunakan Chrome versi terbaru pada halaman HTTPS.');stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:640},height:{ideal:480}}});video.srcObject=stream;await new Promise((resolve,reject)=>{video.onloadedmetadata=resolve;video.onerror=()=>reject(new Error('Video kamera gagal dibuka.'));});await video.play();document.getElementById('placeholder').style.display='none';}
+  async function initHuman(){if(!window.Human||!window.Human.Human)throw new Error('Pustaka pengenalan wajah gagal dimuat. Periksa internet.');human=new Human.Human(HUMAN_CONFIG);await human.load();await human.warmup();}
+  async function sampleFace(){const began=Date.now();while(Date.now()-began<30000){const result=await human.detect(video);const faces=result&&result.face?result.face:[];if(faces.length===1){const f=faces[0];const embedding=f.embedding;const live=Number(f.live||0);const real=Number(f.real||0);const quality=Number(f.faceScore||f.boxScore||0);setStatus(`Wajah terdeteksi · kualitas ${Math.round(quality*100)}% · liveness ${Math.round(live*100)}% · anti-spoof ${Math.round(real*100)}%.`);if(Array.isArray(embedding)&&embedding.length>=64&&quality>=0.5&&live>=liveMin&&real>=realMin)return{embedding:Array.from(embedding),live:live,real:real};}else if(faces.length>1){setStatus('Terdeteksi lebih dari satu wajah. Pastikan hanya satu orang di depan kamera.');}else{setStatus('Mencari wajah… hadapkan wajah ke kamera dan pastikan pencahayaan cukup.');}await new Promise(r=>setTimeout(r,450));}throw new Error('Wajah belum berhasil diverifikasi dalam 30 detik. Coba di tempat lebih terang.');}
+  async function startCapture(){if(busy)return;if(!nonce||!window.opener){setStatus('Halaman ini harus dibuka melalui tombol pada GaGeSystem.');send('ERROR',{message:'Halaman verifikasi tidak terhubung dengan aplikasi utama.'});return;}if(mode==='attendance'&&type!=='DATANG'&&type!=='PULANG'){setStatus('Jenis presensi tidak dikenal.');return;}if(!['location','enroll','attendance'].includes(mode)){setStatus('Mode tidak dikenal.');return;}busy=true;startBtn.disabled=true;startBtn.textContent='Memproses…';try{
+      if(mode==='location'){
+        setStatus('Meminta izin lokasi presisi…');const gps=await getGps();
+        send('RESULT',{latitude:gps.latitude,longitude:gps.longitude,accuracy:gps.accuracy,device:navigator.userAgent});
+        setStatus('Koordinat berhasil dikirim ke panel pengaturan. Kembali ke tab GaGeSystem.');startBtn.textContent='Terkirim';return;
+      }
+      // Request camera immediately from the user gesture, while models and GPS initialize.
+      const cameraPromise=startCamera();const modelPromise=initHuman();const gpsPromise=mode==='attendance'?getGps():Promise.resolve(null);
+      setStatus('Meminta izin kamera, lokasi, dan memuat model AI…');await Promise.all([cameraPromise,modelPromise,gpsPromise]);const gps=await gpsPromise;
+      let samples=[],live=1,real=1;const count=mode==='enroll'?3:1;
+      for(let i=0;i<count;i++){setStatus(mode==='enroll'?`Mengambil sampel wajah ${i+1} dari 3…`:'Memeriksa wajah secara langsung…');const s=await sampleFace();samples.push(s.embedding);live=Math.min(live,s.live);real=Math.min(real,s.real);if(i<count-1)await new Promise(r=>setTimeout(r,800));}
+      const embedding=samples[0].map((_,i)=>samples.reduce((sum,v)=>sum+v[i],0)/samples.length);
+      const result={embedding:embedding,livenessScore:live,realScore:real,device:navigator.userAgent};if(gps){result.latitude=gps.latitude;result.longitude=gps.longitude;result.accuracy=gps.accuracy;}
+      send('RESULT',result);setStatus('Data verifikasi berhasil dikirim ke GaGeSystem. Kembali ke tab aplikasi.');startBtn.textContent='Terkirim';stopCamera();
+    }catch(e){setStatus(e.message);send('ERROR',{message:e.message});startBtn.disabled=false;startBtn.textContent='Coba lagi';busy=false;stopCamera();}}
+  function stopCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}video.pause();video.srcObject=null;}
+  window.addEventListener('beforeunload',()=>stopCamera());
+</script>
+</body>
+</html>
